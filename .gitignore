@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+.hypothesis/
+*.egg-info/
+build/
+dist/
+.venv/
+
+# TypeScript / Node
+node_modules/
+typescript/dist/
+
+# OS
+.DS_Store

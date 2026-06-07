@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "budget-guard"
+version = "0.0.1"
+description = "Per-task budget, loop detection, and kill-switch middleware for agent LLM calls. v0, deterministic and dependency-free."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [{ name = "Major Labs" }]
+keywords = ["ai-agents", "llm", "budget", "cost-control", "loop-detection", "guardrails", "fail-closed"]
+# Core has zero runtime dependencies. Token and call budgets work out of the box;
+# USD budgets use a caller-supplied pricing table.
+dependencies = []
+
+[project.optional-dependencies]
+# Property-based test suite + static security scan.
+test = ["hypothesis>=6", "bandit>=1.7"]
+
+[project.urls]
+Homepage = "https://majorlabs.co"
+Source = "https://github.com/major-matters/budget-guard"
+
+[tool.setuptools]
+packages = ["budgetguard"]
+
+[tool.setuptools.package-data]
+budgetguard = ["py.typed"]
