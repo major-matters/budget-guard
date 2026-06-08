@@ -33,3 +33,11 @@ It does **not** defend against a malicious *caller* who lies about token counts 
 ## Reporting
 
 This is a v0 research artifact. Open an issue at [github.com/major-matters](https://github.com/major-matters) for anything that looks like a fail-open.
+
+## Audit status (v0)
+
+This is a v0 release. It has been independently hardened — CodeQL, bandit, semgrep, property-based tests, and adversarial tier 1-2 reviews, all passing in CI — but it has **not** had a third-party security audit. Treat it accordingly for anything high-stakes.
+
+## Security review welcome
+
+We actively want researcher eyes on this. If you find a fail-open, a signature bypass, an SSRF path, or any way to defeat a guarantee in this document, please open an issue. Credit given. The fail-closed enforcement (budget, loop, and kill-switch checks) is the highest-value target.
