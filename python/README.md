@@ -25,8 +25,8 @@ BudgetGuard never makes the model call itself. You ask it whether the next call 
 ## Install
 
 ```bash
-pip install budget-guard          # Python 3.8+
-npm install budget-guard          # Node 22.6+
+pip install budget-guard-agents   # Python 3.8+
+npm install budget-guard-agents   # Node 22.6+
 ```
 
 Token and call budgets work with zero configuration. USD budgets need a pricing table (see below).
