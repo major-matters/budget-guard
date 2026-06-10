@@ -183,3 +183,26 @@ if __name__ == "__main__":
         passed += 1
         print(f"  ok  {fn.__name__}")
     print(f"\n{passed}/{len(fns)} passed")
+
+
+# -- Audit 2026-06-10 finding #5: record() must fail closed on unpriced models --
+
+def test_record_raises_on_unpriced_model_under_usd_cap():
+    """Under a USD cap, recording an unpriced model must raise, not log $0."""
+    g = BudgetGuard(pricing=Pricing({"m": ModelPrice(1.0, 2.0)}, use_builtin=False))
+    with g.task("t", BudgetPolicy(max_usd=0.50)):
+        g.check("t", model="m", est_input_tokens=10, est_output_tokens=10)
+        raised = False
+        try:
+            g.record("t", model="unpriced-model", input_tokens=10_000_000, output_tokens=10_000_000)
+        except KeyError:
+            raised = True
+        assert raised, "record() silently under-counted an unpriced model under a USD cap"
+
+
+def test_record_unpriced_ok_without_usd_cap():
+    """With no USD cap, an unpriced model is recorded best-effort (no raise)."""
+    g = BudgetGuard(pricing=Pricing({"m": ModelPrice(1.0, 2.0)}, use_builtin=False))
+    with g.task("t", BudgetPolicy(max_calls=5)):
+        led = g.record("t", model="unpriced-model", input_tokens=100, output_tokens=100)
+        assert led.usd == 0.0 and led.calls == 1

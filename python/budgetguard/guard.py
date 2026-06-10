@@ -229,8 +229,14 @@ class BudgetGuard:
             led.input_tokens += input_tokens
             led.output_tokens += output_tokens
             led.calls += 1
-            if self._pricing is not None and self._pricing.has(model):
-                led.usd += self._pricing.cost(model, input_tokens, output_tokens)
+            if self._pricing is not None:
+                if led.policy.max_usd is not None:
+                    # Fail closed: under a USD cap, an unpriced model must not be
+                    # silently recorded as $0 (audit 2026-06-10 finding #5).
+                    # cost() raises KeyError on a missing price, matching check().
+                    led.usd += self._pricing.cost(model, input_tokens, output_tokens)
+                elif self._pricing.has(model):
+                    led.usd += self._pricing.cost(model, input_tokens, output_tokens)
             if signature is not None:
                 led._recent.append(signature)
                 # Bound memory: keep a little more than the longest window we read.

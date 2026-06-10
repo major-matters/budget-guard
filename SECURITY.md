@@ -41,3 +41,8 @@ This is a v0 release. It has been independently hardened — CodeQL, bandit, sem
 ## Security review welcome
 
 We actively want researcher eyes on this. If you find a fail-open, a signature bypass, an SSRF path, or any way to defeat a guarantee in this document, please open an issue. Credit given. The fail-closed enforcement (budget, loop, and kill-switch checks) is the highest-value target.
+
+## v0.0.2 hardening (2026-06-10 internal audit)
+
+- **record() fail-open fixed.** Under a USD cap, recording usage for a model with no price now raises (matching `check()`), instead of silently recording $0 and letting spend run unbounded. With no USD cap, an unpriced model is still recorded best-effort.
+- **Loop detection (clarification).** Loop detection counts only byte-identical signatures within a sliding window. Supply a *semantic* (normalized) signature for the action, not raw text, or a perturbed/interleaved loop can evade it; the counter is windowed, not cumulative.

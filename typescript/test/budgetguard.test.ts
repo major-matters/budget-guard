@@ -131,3 +131,22 @@ test("withTask closes automatically", () => {
   });
   assert.throws(() => g.status("t"), UnknownTask); // closed after
 });
+
+// -- Audit 2026-06-10 finding #5: record() must fail closed on unpriced models --
+
+test("record throws on an unpriced model under a USD cap", () => {
+  const g = new BudgetGuard(new Pricing({ m: { inputPer1k: 1.0, outputPer1k: 2.0 } as ModelPrice }, { useBuiltin: false }));
+  g.open("t", { maxUsd: 0.5 });
+  g.check("t", { model: "m", estInputTokens: 10, estOutputTokens: 10 });
+  assert.throws(() => g.record("t", { model: "unpriced", inputTokens: 10_000_000, outputTokens: 10_000_000 }));
+  g.close("t");
+});
+
+test("record allows an unpriced model when there is no USD cap", () => {
+  const g = new BudgetGuard(new Pricing({ m: { inputPer1k: 1.0, outputPer1k: 2.0 } as ModelPrice }, { useBuiltin: false }));
+  g.open("t", { maxCalls: 5 });
+  const snap = g.record("t", { model: "unpriced", inputTokens: 100, outputTokens: 100 });
+  assert.equal(snap.usd, 0);
+  assert.equal(snap.calls, 1);
+  g.close("t");
+});

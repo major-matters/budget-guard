@@ -199,8 +199,15 @@ export class BudgetGuard {
     led.inputTokens += inTok;
     led.outputTokens += outTok;
     led.calls += 1;
-    if (this.pricing && this.pricing.has(opts.model)) {
-      led.usd += this.pricing.cost(opts.model, inTok, outTok);
+    if (this.pricing) {
+      if (led.policy.maxUsd != null) {
+        // Fail closed: under a USD cap, an unpriced model must not be silently
+        // recorded as $0 (audit 2026-06-10 finding #5). cost() throws on a
+        // missing price, matching check().
+        led.usd += this.pricing.cost(opts.model, inTok, outTok);
+      } else if (this.pricing.has(opts.model)) {
+        led.usd += this.pricing.cost(opts.model, inTok, outTok);
+      }
     }
     if (opts.signature != null) {
       led.recent.push(opts.signature);

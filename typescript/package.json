@@ -1,6 +1,6 @@
 {
   "name": "budget-guard-agents",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Per-task budget, loop detection, and kill-switch middleware for agent LLM calls. v0, deterministic and dependency-free.",
   "type": "module",
   "license": "MIT",
