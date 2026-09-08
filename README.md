@@ -4,9 +4,9 @@
 
 An agent with a payment credential and a vague instruction is a budget incident waiting to happen. BudgetGuard sits between your agent and its model calls and refuses the next call the moment it would cross a limit you set, before the spend happens, not after.
 
-It is one of three small primitives from [Major Labs](https://majorlabs.co):
+It is part of the five-kit agent-safety suite from [Major Labs](https://majorlabs.co):
 
-> **MandateKit** says what an agent *may* do. **BudgetGuard** caps what it *spends*. **WitnessKit** proves what it *did*.
+> **[IdentityKit](https://github.com/major-matters/identitykit)** says who the agent is. **[MandateKit](https://github.com/major-matters/mandatekit)** says what it may do. **[BudgetGuard](https://github.com/major-matters/budget-guard)** caps what it spends. **[WitnessKit](https://github.com/major-matters/witnesskit)** proves what it did. **[RememberKit](https://github.com/major-matters/rememberkit)** governs what it remembers.
 
 ---
 
@@ -95,6 +95,16 @@ If you only use token or call budgets, you do not need pricing at all.
 - **In-memory only.** State lives in the process. A kill switch or ledger does not survive a restart and is not shared across machines. A pluggable store is planned.
 
 ---
+
+---
+
+## The accountability stack, September 2026
+
+This year's frontier launches arrived alongside rogue-agent incidents that investigators struggled to attribute, and a written admission from inside the labs that runtime monitoring is degrading. The accountability primitives those events call for are what this suite implements:
+
+> **[IdentityKit](https://github.com/major-matters/identitykit)** says who the agent is. **[MandateKit](https://github.com/major-matters/mandatekit)** says what it may do. **[BudgetGuard](https://github.com/major-matters/budget-guard)** caps what it spends. **[WitnessKit](https://github.com/major-matters/witnesskit)** proves what it did. **[RememberKit](https://github.com/major-matters/rememberkit)** governs what it remembers.
+
+The [MM Control Stack Compact](https://www.majormatters.co/p/open-letter-control-stack-compact) (September 2026) proposes six verifiable commitments for frontier-AI accountability. Attributable agents and contractually bounded authority need running code, not pledges. This suite is a working v0 of that layer.
 
 ## License
 
