@@ -1,5 +1,7 @@
 # BudgetGuard
 
+[![MCP Surface Check: low surface](https://img.shields.io/badge/MCP_Surface_Check-low-4FA86A)](https://majorlabs.co/security)
+
 **Per-task budget, loop detection, and kill-switch middleware for agent LLM calls.** Deterministic, dependency-free, fail-closed. v0.
 
 An agent with a payment credential and a vague instruction is a budget incident waiting to happen. BudgetGuard sits between your agent and its model calls and refuses the next call the moment it would cross a limit you set, before the spend happens, not after.
