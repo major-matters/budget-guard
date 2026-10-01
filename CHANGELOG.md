@@ -2,7 +2,7 @@
 
 Notable changes to this repository.
 
-## 0.1.0 (2026-10-01, unreleased)
+## 0.1.0 (2026-10-01)
 
 Built for the Mandate Sandbox, the bank-facing demo of the five-kit suite.
 
