@@ -76,6 +76,30 @@ Run the demo: `python3 demo.py` (Python) or `npm run demo` (TypeScript).
 
 ---
 
+## Money, not just tokens (0.1.0)
+
+The same ledger caps the money an agent moves out. `maxSpend` / `max_spend`
+is a cumulative cap across every guarded action, in an integer unit plus a
+currency (the MandateKit convention), checked before the action and recorded
+after it. MandateKit caps a single transaction; BudgetGuard caps the running
+total, which is the difference between "£90 per item" and "£90 for the job".
+
+```python
+guard.open("kettle", BudgetPolicy(max_spend={"value": 9000, "currency": "GBP"}, max_repeats=1))
+guard.check("kettle", amount={"value": 8400, "currency": "GBP"}, signature="pay:acme:8400")
+guard.record("kettle", amount={"value": 8400, "currency": "GBP"}, signature="pay:acme:8400")
+guard.check("kettle", amount={"value": 2400, "currency": "GBP"})   # BudgetExceeded: 10800 > 9000 GBP
+```
+
+```ts
+guard.open("kettle", { maxSpend: { value: 9000, currency: "GBP" }, maxRepeats: 1 });
+guard.check("kettle", { amount: { value: 8400, currency: "GBP" }, signature: "pay:acme:8400" });
+```
+
+A currency that does not match the policy is refused before any comparison.
+With `maxRepeats` set to 1, loop detection catches the same payment made
+twice; the kill switch stops money mid-task the way it stops model calls.
+
 ## Pricing
 
 USD budgets need to convert tokens to dollars. The built-in price table is **illustrative and will drift** — do not trust it for billing. Supply your own verified prices (per 1,000 tokens):

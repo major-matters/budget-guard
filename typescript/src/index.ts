@@ -12,7 +12,7 @@ export {
   UnknownTask,
 } from "./errors.ts";
 export { BudgetGuard, type Decision, type TaskSnapshot } from "./guard.ts";
-export { type BudgetPolicy } from "./policy.ts";
+export { type BudgetPolicy, type MoneyAmount } from "./policy.ts";
 export { Pricing, type ModelPrice, DEFAULT_PRICES } from "./pricing.ts";
 
-export const VERSION = "0.0.1";
+export const VERSION = "0.1.0";

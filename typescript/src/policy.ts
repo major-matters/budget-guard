@@ -1,8 +1,18 @@
 /** The budget envelope for a task. Any limit left undefined is not enforced. */
 
+/** An amount of money in a caller-chosen integer unit (pence, cents, whole
+ *  units) and a currency, the same convention as MandateKit. */
+export interface MoneyAmount {
+  value: number;
+  currency: string;
+}
+
 export interface BudgetPolicy {
   /** Stop once estimated spend would cross this (needs Pricing). */
   maxUsd?: number;
+  /** Cumulative money the task may move out, across every guarded action.
+   *  MandateKit caps a single transaction; this caps the running total. */
+  maxSpend?: MoneyAmount;
   /** Total input+output tokens. */
   maxTokens?: number;
   maxInputTokens?: number;
@@ -35,6 +45,12 @@ export function resolvePolicy(p: BudgetPolicy = {}): ResolvedPolicy {
     const v = p[k];
     if (v != null && (typeof v !== "number" || !(v > 0))) {
       throw new Error(`${k} must be a positive number, got ${JSON.stringify(v)}`);
+    }
+  }
+  if (p.maxSpend != null) {
+    const m = p.maxSpend;
+    if (!m || typeof m !== "object" || !Number.isInteger(m.value) || m.value < 0 || m.value > Number.MAX_SAFE_INTEGER || typeof m.currency !== "string" || !m.currency) {
+      throw new Error("maxSpend must be {value: integer >= 0, currency: string}");
     }
   }
   const repeatWindow = p.repeatWindow ?? 20;

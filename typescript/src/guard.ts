@@ -11,7 +11,7 @@
  */
 
 import { BudgetExceeded, KillSwitched, LoopDetected, UnknownTask, BudgetGuardDenied } from "./errors.ts";
-import { type BudgetPolicy, type ResolvedPolicy, resolvePolicy } from "./policy.ts";
+import { type BudgetPolicy, type MoneyAmount, type ResolvedPolicy, resolvePolicy } from "./policy.ts";
 import { Pricing } from "./pricing.ts";
 
 export interface TaskSnapshot {
@@ -21,9 +21,11 @@ export interface TaskSnapshot {
   outputTokens: number;
   tokens: number;
   usd: number;
+  /** Money moved so far, in the policy's unit and currency (0 with no maxSpend). */
+  spend: number;
   killed: boolean;
-  limits: { maxUsd?: number; maxTokens?: number; maxCalls?: number };
-  remaining: { usd: number | null; tokens: number | null; calls: number | null };
+  limits: { maxUsd?: number; maxTokens?: number; maxCalls?: number; maxSpend?: MoneyAmount };
+  remaining: { usd: number | null; tokens: number | null; calls: number | null; spend: number | null };
 }
 
 export interface Decision {
@@ -32,12 +34,15 @@ export interface Decision {
   reason?: string;
   projectedUsd?: number;
   projectedTokens?: number;
+  projectedSpend?: number;
 }
 
 interface CheckOpts {
   model?: string;
   estInputTokens?: number;
   estOutputTokens?: number;
+  /** Money this action would move out. Checked against maxSpend. */
+  amount?: MoneyAmount;
   signature?: string;
   /** true (default) raises on a violation; false returns a Decision. */
   enforce?: boolean;
@@ -47,7 +52,20 @@ interface RecordOpts {
   model?: string;
   inputTokens?: number;
   outputTokens?: number;
+  /** Money the action actually moved out. */
+  amount?: MoneyAmount;
   signature?: string;
+}
+
+function checkedMoney(name: string, a: MoneyAmount | undefined, policyCap: MoneyAmount | undefined): number {
+  if (a == null) return 0;
+  if (!a || typeof a !== "object" || !Number.isInteger(a.value) || a.value < 0 || a.value > Number.MAX_SAFE_INTEGER || typeof a.currency !== "string" || !a.currency) {
+    throw new Error(`${name} must be {value: integer >= 0, currency: string}`);
+  }
+  if (policyCap != null && a.currency !== policyCap.currency) {
+    throw new Error(`${name} currency ${a.currency} does not match the policy's maxSpend currency ${policyCap.currency}`);
+  }
+  return a.value;
 }
 
 class Ledger {
@@ -56,6 +74,7 @@ class Ledger {
   inputTokens = 0;
   outputTokens = 0;
   usd = 0;
+  spend = 0;
   calls = 0;
   killed = false;
   recent: string[] = [];
@@ -78,12 +97,14 @@ class Ledger {
       outputTokens: this.outputTokens,
       tokens: this.tokens,
       usd: round6(this.usd),
+      spend: this.spend,
       killed: this.killed,
-      limits: { maxUsd: p.maxUsd, maxTokens: p.maxTokens, maxCalls: p.maxCalls },
+      limits: { maxUsd: p.maxUsd, maxTokens: p.maxTokens, maxCalls: p.maxCalls, maxSpend: p.maxSpend },
       remaining: {
         usd: p.maxUsd == null ? null : round6(p.maxUsd - this.usd),
         tokens: p.maxTokens == null ? null : p.maxTokens - this.tokens,
         calls: p.maxCalls == null ? null : p.maxCalls - this.calls,
+        spend: p.maxSpend == null ? null : p.maxSpend.value - this.spend,
       },
     };
   }
@@ -139,6 +160,8 @@ export class BudgetGuard {
     const enforce = opts.enforce ?? true;
     const led = this.ledger(taskId);
     const p = led.policy;
+    // Validated up front so a malformed amount can never slip past the cap.
+    const amount = checkedMoney("amount", opts.amount, p.maxSpend);
 
     if (this.globalKill || led.killed) {
       return this.deny(enforce, KillSwitched, taskId, "kill switch engaged", "kill_switched");
@@ -177,6 +200,13 @@ export class BudgetGuard {
       return this.deny(enforce, BudgetExceeded, taskId, `token cap exceeded (${projTokens} > ${p.maxTokens})`, "budget_exceeded", { projectedTokens: projTokens });
     }
 
+    const projSpend = led.spend + amount;
+    if (p.maxSpend != null && projSpend > p.maxSpend.value) {
+      return this.deny(enforce, BudgetExceeded, taskId,
+        `spend cap exceeded (${projSpend} > ${p.maxSpend.value} ${p.maxSpend.currency})`, "budget_exceeded",
+        { projectedSpend: projSpend, projectedTokens: projTokens });
+    }
+
     let projUsd = led.usd;
     if (p.maxUsd != null) {
       if (!this.pricing) throw new Error("policy sets maxUsd but BudgetGuard was created without Pricing");
@@ -186,7 +216,7 @@ export class BudgetGuard {
       }
     }
 
-    return { allowed: true, projectedUsd: projUsd, projectedTokens: projTokens };
+    return { allowed: true, projectedUsd: projUsd, projectedTokens: projTokens, projectedSpend: projSpend };
   }
 
   record(taskId: string, opts: RecordOpts = {}): TaskSnapshot {
@@ -196,8 +226,10 @@ export class BudgetGuard {
       throw new Error("token counts must be non-negative finite numbers");
     }
     const led = this.ledger(taskId);
+    const amount = checkedMoney("amount", opts.amount, led.policy.maxSpend);
     led.inputTokens += inTok;
     led.outputTokens += outTok;
+    led.spend += amount;
     led.calls += 1;
     if (this.pricing) {
       if (led.policy.maxUsd != null) {
@@ -243,9 +275,9 @@ export class BudgetGuard {
     taskId: string,
     reason: string,
     code: string,
-    extra: { detail?: Record<string, unknown>; projectedUsd?: number; projectedTokens?: number } = {},
+    extra: { detail?: Record<string, unknown>; projectedUsd?: number; projectedTokens?: number; projectedSpend?: number } = {},
   ): Decision {
     if (enforce) throw new Cls(reason, { taskId, detail: extra.detail });
-    return { allowed: false, code, reason, projectedUsd: extra.projectedUsd, projectedTokens: extra.projectedTokens };
+    return { allowed: false, code, reason, projectedUsd: extra.projectedUsd, projectedTokens: extra.projectedTokens, projectedSpend: extra.projectedSpend };
   }
 }

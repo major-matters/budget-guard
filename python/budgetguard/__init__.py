@@ -19,7 +19,7 @@ from .guard import BudgetGuard, Decision, TaskLedger
 from .policy import BudgetPolicy
 from .pricing import DEFAULT_PRICES, ModelPrice, Pricing
 
-__version__ = "0.0.1"
+__version__ = "0.1.0"
 
 __all__ = [
     "BudgetGuard",

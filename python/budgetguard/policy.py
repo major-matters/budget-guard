@@ -3,7 +3,23 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Dict, Optional
+
+MAX_SAFE_INT = 2 ** 53 - 1
+
+
+def check_money(name: str, amount) -> Dict:
+    """Validate a money amount: {"value": integer >= 0, "currency": str}, the same
+    integer-unit-plus-currency convention as MandateKit."""
+    if not isinstance(amount, dict):
+        raise ValueError(f"{name} must be a dict like {{'value': 500, 'currency': 'GBP'}}")
+    v = amount.get("value")
+    cur = amount.get("currency")
+    if isinstance(v, bool) or not isinstance(v, int) or not 0 <= v <= MAX_SAFE_INT:
+        raise ValueError(f"{name}.value must be an integer in [0, 2**53-1], got {v!r}")
+    if not isinstance(cur, str) or not cur:
+        raise ValueError(f"{name}.currency must be a non-empty string")
+    return {"value": v, "currency": cur}
 
 
 @dataclass(frozen=True)
@@ -11,6 +27,9 @@ class BudgetPolicy:
     """Limits applied to a single task.
 
     max_usd            stop once estimated spend would cross this (needs Pricing)
+    max_spend          cumulative money the task may move out, across every guarded
+                       action: {"value": integer, "currency": str}. MandateKit caps a
+                       single transaction; this caps the running total.
     max_tokens         total input+output tokens
     max_input_tokens   input tokens only
     max_output_tokens  output tokens only
@@ -20,6 +39,7 @@ class BudgetPolicy:
     """
 
     max_usd: Optional[float] = None
+    max_spend: Optional[Dict] = None
     max_tokens: Optional[int] = None
     max_input_tokens: Optional[int] = None
     max_output_tokens: Optional[int] = None
@@ -34,9 +54,11 @@ class BudgetPolicy:
                 raise ValueError(f"{name} must be positive, got {v!r}")
         if self.repeat_window <= 0:
             raise ValueError("repeat_window must be positive")
+        if self.max_spend is not None:
+            check_money("max_spend", self.max_spend)
 
     def has_any_limit(self) -> bool:
         return any(
             getattr(self, n) is not None
-            for n in ("max_usd", "max_tokens", "max_input_tokens", "max_output_tokens", "max_calls", "max_repeats")
+            for n in ("max_usd", "max_spend", "max_tokens", "max_input_tokens", "max_output_tokens", "max_calls", "max_repeats")
         )

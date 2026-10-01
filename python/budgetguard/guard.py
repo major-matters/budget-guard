@@ -40,8 +40,21 @@ def _toknum(name: str, v) -> float:
     return v
 
 from .errors import BudgetExceeded, KillSwitched, LoopDetected, UnknownTask
-from .policy import BudgetPolicy
+from .policy import BudgetPolicy, check_money
 from .pricing import Pricing
+
+
+def _money(name: str, amount, cap) -> int:
+    """Validate an optional money amount against the policy's max_spend currency.
+    Returns the integer value (0 when no amount is given)."""
+    if amount is None:
+        return 0
+    m = check_money(name, amount)
+    if cap is not None and m["currency"] != cap["currency"]:
+        raise ValueError(
+            f"{name} currency {m['currency']} does not match the policy's max_spend currency {cap['currency']}"
+        )
+    return m["value"]
 
 
 @dataclass
@@ -53,6 +66,7 @@ class TaskLedger:
     input_tokens: int = 0
     output_tokens: int = 0
     usd: float = 0.0
+    spend: int = 0
     calls: int = 0
     killed: bool = False
     _recent: Deque[str] = field(default_factory=deque)
@@ -70,16 +84,19 @@ class TaskLedger:
             "output_tokens": self.output_tokens,
             "tokens": self.tokens,
             "usd": round(self.usd, 6),
+            "spend": self.spend,
             "killed": self.killed,
             "limits": {
                 "max_usd": p.max_usd,
                 "max_tokens": p.max_tokens,
                 "max_calls": p.max_calls,
+                "max_spend": p.max_spend,
             },
             "remaining": {
                 "usd": None if p.max_usd is None else round(p.max_usd - self.usd, 6),
                 "tokens": None if p.max_tokens is None else p.max_tokens - self.tokens,
                 "calls": None if p.max_calls is None else p.max_calls - self.calls,
+                "spend": None if p.max_spend is None else p.max_spend["value"] - self.spend,
             },
         }
 
@@ -93,6 +110,7 @@ class Decision:
     reason: Optional[str] = None
     projected_usd: Optional[float] = None
     projected_tokens: Optional[int] = None
+    projected_spend: Optional[int] = None
 
 
 class BudgetGuard:
@@ -141,18 +159,22 @@ class BudgetGuard:
         model: Optional[str] = None,
         est_input_tokens: int = 0,
         est_output_tokens: int = 0,
+        amount: Optional[dict] = None,
         signature: Optional[str] = None,
         enforce: bool = True,
     ) -> Decision:
         """Decide whether the next call may proceed. With enforce=True (default)
         a violation raises a BudgetGuardDenied subclass; otherwise it returns a
-        Decision(allowed=False, ...)."""
+        Decision(allowed=False, ...). `amount` is the money this action would
+        move out, checked against the policy's max_spend."""
         est_input_tokens = _toknum("est_input_tokens", est_input_tokens)
         est_output_tokens = _toknum("est_output_tokens", est_output_tokens)
 
         with self._lock:
             led = self._ledger(task_id)
             p = led.policy
+            # Validated up front so a malformed amount can never slip past the cap.
+            amount_value = _money("amount", amount, p.max_spend)
 
             if self._global_kill or led.killed:
                 return self._deny(
@@ -197,6 +219,13 @@ class BudgetGuard:
                                   f"token cap exceeded ({proj_tokens} > {p.max_tokens})",
                                   "budget_exceeded", projected_tokens=proj_tokens)
 
+            proj_spend = led.spend + amount_value
+            if p.max_spend is not None and proj_spend > p.max_spend["value"]:
+                return self._deny(enforce, BudgetExceeded, task_id,
+                                  f"spend cap exceeded ({proj_spend} > {p.max_spend['value']} {p.max_spend['currency']})",
+                                  "budget_exceeded", projected_spend=proj_spend,
+                                  projected_tokens=proj_tokens)
+
             proj_usd = led.usd
             if p.max_usd is not None:
                 if self._pricing is None:
@@ -210,7 +239,8 @@ class BudgetGuard:
                                       "budget_exceeded", projected_usd=proj_usd,
                                       projected_tokens=proj_tokens)
 
-            return Decision(allowed=True, projected_usd=proj_usd, projected_tokens=proj_tokens)
+            return Decision(allowed=True, projected_usd=proj_usd, projected_tokens=proj_tokens,
+                            projected_spend=proj_spend)
 
     def record(
         self,
@@ -219,15 +249,19 @@ class BudgetGuard:
         model: Optional[str] = None,
         input_tokens: int = 0,
         output_tokens: int = 0,
+        amount: Optional[dict] = None,
         signature: Optional[str] = None,
     ) -> TaskLedger:
-        """Commit actual usage after a call completed."""
+        """Commit actual usage after a call completed. `amount` is the money the
+        action actually moved out."""
         input_tokens = _toknum("input_tokens", input_tokens)
         output_tokens = _toknum("output_tokens", output_tokens)
         with self._lock:
             led = self._ledger(task_id)
+            amount_value = _money("amount", amount, led.policy.max_spend)
             led.input_tokens += input_tokens
             led.output_tokens += output_tokens
+            led.spend += amount_value
             led.calls += 1
             if self._pricing is not None:
                 if led.policy.max_usd is not None:
@@ -271,8 +305,9 @@ class BudgetGuard:
     # -- internal ------------------------------------------------------------
 
     def _deny(self, enforce, exc_cls, task_id, reason, code, *,
-              projected_usd=None, projected_tokens=None, detail=None) -> Decision:
+              projected_usd=None, projected_tokens=None, projected_spend=None, detail=None) -> Decision:
         if enforce:
             raise exc_cls(reason, task_id=task_id, detail=detail)
         return Decision(allowed=False, code=code, reason=reason,
-                        projected_usd=projected_usd, projected_tokens=projected_tokens)
+                        projected_usd=projected_usd, projected_tokens=projected_tokens,
+                        projected_spend=projected_spend)
