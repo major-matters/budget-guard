@@ -29,6 +29,11 @@ pip install budget-guard-agents   # Python 3.8+
 npm install budget-guard-agents   # Node 22.6+
 ```
 
+Node 22.6 or later. Type stripping is on by default from Node 22.18; on 22.6
+to 22.17 the repository's `npm test` and `npm run demo` pass
+`--experimental-strip-types` for you. The published package is compiled and
+needs no flag.
+
 Token and call budgets work with zero configuration. USD budgets need a pricing table (see below).
 
 ---

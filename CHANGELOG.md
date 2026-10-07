@@ -2,6 +2,19 @@
 
 Notable changes to this repository.
 
+## 0.1.1 (2026-10-07)
+
+TypeScript package only; no change to the ledger or its verdicts. From a
+reviewer's run of the sibling MandateKit repository on Node 22.14, the same
+fault applied here.
+
+- `npm test`, `npm run test:build` and `npm run demo` now pass
+  `--experimental-strip-types`, so they work on Node 22.6 to 22.17 as the
+  README promised (type stripping is unflagged only from 22.18).
+- README: the Node version note.
+- Published to npm as 0.1.1 (0.1.0 was tagged but never published; npm had
+  0.0.2 until this release).
+
 ## 0.1.0 (2026-10-01)
 
 Built for the Mandate Sandbox, the bank-facing demo of the five-kit suite.

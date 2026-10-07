@@ -15,4 +15,4 @@ export { BudgetGuard, type Decision, type TaskSnapshot } from "./guard.ts";
 export { type BudgetPolicy, type MoneyAmount } from "./policy.ts";
 export { Pricing, type ModelPrice, DEFAULT_PRICES } from "./pricing.ts";
 
-export const VERSION = "0.1.0";
+export const VERSION = "0.1.1";
