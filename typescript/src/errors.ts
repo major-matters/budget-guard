@@ -28,3 +28,26 @@ export class KillSwitched extends BudgetGuardDenied {
 export class UnknownTask extends BudgetGuardDenied {
   code = "unknown_task";
 }
+
+/** Base class for the spend-velocity refusals (0.2.0). Catch this to handle any
+ *  velocity denial uniformly. Every instance carries the velocity detail in
+ *  `detail.velocity`. */
+export class VelocityDenied extends BudgetGuardDenied {
+  code = "velocity_denied";
+}
+
+/** Money moved in the current window, plus this call, would cross maxSpendPerWindow. */
+export class VelocitySpendExceeded extends VelocityDenied {
+  code = "velocity_spend";
+}
+
+/** Calls made in the current window, plus this one, would cross maxCallsPerWindow. */
+export class VelocityCallsExceeded extends VelocityDenied {
+  code = "velocity_calls";
+}
+
+/** Spend in the current window exceeds anomalyFactor times the trailing baseline,
+ *  and the policy's anomalyAction is "deny". */
+export class VelocityAnomaly extends VelocityDenied {
+  code = "velocity_anomaly";
+}

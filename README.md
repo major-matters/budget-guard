@@ -14,11 +14,12 @@ It is part of the five-kit agent-safety suite from [Major Labs](https://majorlab
 
 ## What it does
 
-Three controls, all enforced before the call runs:
+Four controls, all enforced before the call runs:
 
 - **Budgets** — cap a task by USD, total tokens, input/output tokens, or call count. The next call is refused if it would cross the cap.
 - **Loop detection** — catch runaway agents that repeat the same call. If one signature repeats past a threshold within a sliding window, the call is denied.
 - **Kill switch** — halt a single task, or everything, immediately.
+- **Spend velocity** (0.2.0): cap how much money, or how many calls, fit in a sliding window, and deny or flag a window that breaks the task's own recent pattern.
 
 BudgetGuard never makes the model call itself. You ask it whether the next call is allowed (`check`), make the call, then tell it what actually happened (`record`).
 
@@ -61,7 +62,7 @@ Prefer not to use exceptions? `guard.check(..., enforce=False)` returns a `Decis
 ## Quickstart (TypeScript)
 
 ```ts
-import { BudgetGuard, Pricing } from "budget-guard";
+import { BudgetGuard, Pricing } from "budget-guard-agents";
 
 const guard = new BudgetGuard(new Pricing());
 guard.open("research-job", { maxUsd: 0.5, maxCalls: 20, maxRepeats: 3 });
@@ -100,6 +101,87 @@ A currency that does not match the policy is refused before any comparison.
 With `maxRepeats` set to 1, loop detection catches the same payment made
 twice; the kill switch stops money mid-task the way it stops model calls.
 
+## Spend-velocity windows and anomaly detection (0.2.0)
+
+A total cap says how much a task may spend. A velocity window says how fast.
+`window_seconds` / `windowSeconds` opens a sliding window over the task's
+recorded calls; `max_spend_per_window` and `max_calls_per_window` cap what fits
+in it, and `anomaly_factor` compares the current window with the task's own
+recent history. Time is injected: pass `now` (seconds, int or float) to every
+`check` and `record`, or give the guard a `clock` at construction. The wall
+clock is used only when neither is supplied, so tests and replays are
+deterministic.
+
+```python
+from budgetguard import BudgetGuard, BudgetPolicy, VelocityDenied
+
+guard = BudgetGuard()   # or BudgetGuard(clock=time.time) and omit now= below
+guard.open("payouts", BudgetPolicy(window_seconds=60, max_spend_per_window={"value": 50000, "currency": "GBP"},
+                                   max_calls_per_window=20, anomaly_factor=3, baseline_windows=3, anomaly_action="deny"))
+guard.check("payouts", amount={"value": 2500, "currency": "GBP"}, now=1_700_000_000)    # raises a VelocityDenied subclass
+guard.record("payouts", amount={"value": 2500, "currency": "GBP"}, now=1_700_000_000)
+print(guard.check("payouts", amount={"value": 2500, "currency": "GBP"}, now=1_700_000_030, enforce=False).velocity)
+```
+
+```ts
+import { BudgetGuard, VelocityDenied } from "budget-guard-agents";
+
+const guard = new BudgetGuard(undefined, { clock: () => Date.now() / 1000 });   // or pass now per call
+guard.open("payouts", { windowSeconds: 60, maxSpendPerWindow: { value: 50000, currency: "GBP" },
+                        maxCallsPerWindow: 20, anomalyFactor: 3, baselineWindows: 3, anomalyAction: "flag" });
+const d = guard.check("payouts", { amount: { value: 2500, currency: "GBP" }, now: 1_700_000_000, enforce: false });
+guard.record("payouts", { amount: { value: 2500, currency: "GBP" }, now: 1_700_000_000 });
+console.log(d.velocity);   // { windowSeconds: 60, windowSpend: 2500, windowCalls: 1, baseline: null, factor: 3, anomaly: false, action: null }
+```
+
+The semantics, identical in both languages:
+
+- **Window caps.** `max_spend_per_window` refuses the call when the money
+  recorded in the last `window_seconds`, plus the proposed `amount`, exceeds the
+  cap (code `velocity_spend`, exception `VelocitySpendExceeded`).
+  `max_calls_per_window` refuses when the calls recorded in the last
+  `window_seconds`, plus this one, exceed the cap (code `velocity_calls`,
+  `VelocityCallsExceeded`). A recorded call counts while it is less than
+  `window_seconds` old; at exactly `window_seconds` it has aged out. Money is the
+  integer-unit ledger from 0.1.0, so there is no float drift. The window cap's
+  currency must match `max_spend` when both are set, and every `amount` must
+  match it.
+- **Anomaly detection.** The current window is the bucket ending at `now`; the
+  `window_seconds` before it is completed bucket 1, the `window_seconds` before
+  that bucket 2, and so on. The baseline is the mean spend of the most recent
+  `baseline_windows` completed buckets (default 3). It is active only once the
+  task's first recorded call is at least `baseline_windows` times
+  `window_seconds` old, so every bucket in the mean lies inside the task's
+  history; empty buckets inside that history count as zero. The call is an
+  anomaly when the current window's spend, including the proposed amount, is
+  strictly greater than `anomaly_factor` times the baseline. With an active
+  baseline of zero, any positive spend is therefore an anomaly; before the
+  baseline is active nothing trips, so a cold start never fires.
+  `anomaly_action="deny"` (the default) refuses with code `velocity_anomaly`
+  (`VelocityAnomaly`); `"flag"` allows the call and sets `anomaly: true` on the
+  decision.
+- **Order.** The kill switch, loop detection, call cap, token caps, spend cap
+  and USD cap are evaluated first, exactly as before; then the window spend
+  cap, the window call cap, and the anomaly check. The first failing check wins
+  and reports its own reason.
+- **Detail.** Every decision from a policy with `window_seconds` carries
+  `velocity`: `window_seconds`, `window_spend` and `window_calls` (both
+  including the proposed call), `baseline` (null while inactive), `factor`,
+  `anomaly`, and `action` (null, `"deny"` or `"flag"`). It is a plain dict or
+  object, so it serializes into a WitnessKit trail unchanged, and when `check`
+  raises it travels in `detail["velocity"]` / `detail.velocity`. The two
+  implementations produce identical verdicts, reason strings and detail
+  objects: both test suites replay `fixtures/velocity.json`.
+- **Misconfiguration fails closed.** A non-positive or non-integer window, a
+  factor of 1 or less, a velocity limit without `window_seconds`, an unknown
+  `anomaly_action`, or a window cap in a different currency from `max_spend`
+  raises when the policy is built.
+- **Limitation.** Velocity state is in memory, single process, and per guard
+  instance: two guards, or two processes, each see only their own calls. `now`
+  is expected not to go backwards within a task.
+
+---
+
 ## Pricing
 
 USD budgets need to convert tokens to dollars. The built-in price table is **illustrative and will drift** — do not trust it for billing. Supply your own verified prices (per 1,000 tokens):
@@ -118,7 +200,7 @@ If you only use token or call budgets, you do not need pricing at all.
 - **Concurrency is check-then-act.** `check` and `record` are individually safe, but the model call happens between them. Two calls running concurrently under the same task can both pass `check` before either records, and overshoot the cap. For now, run one guarded call per task at a time, or treat the cap as a soft ceiling under concurrency. A reserve/commit API is planned.
 - **USD enforcement carries float drift.** Costs are floating point; the cap may be honored to within a fraction of a cent, not exactly.
 - **Loop detection is signature-based.** It only catches loops you give it a stable signature for (e.g. a hash of the prompt and tool arguments). It does not infer loops on its own.
-- **In-memory only.** State lives in the process. A kill switch or ledger does not survive a restart and is not shared across machines. A pluggable store is planned.
+- **In-memory only.** State lives in the process. A kill switch or ledger does not survive a restart and is not shared across machines. Spend-velocity windows are per guard instance for the same reason. A pluggable store is planned.
 
 ---
 

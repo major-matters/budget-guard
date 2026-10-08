@@ -1,5 +1,5 @@
-"""BudgetGuard: per-task budget, loop detection, and kill-switch middleware for
-agent LLM calls. Deterministic, dependency-free, fail-closed.
+"""BudgetGuard: per-task budget, loop detection, kill-switch, and spend-velocity
+middleware for agent LLM calls. Deterministic, dependency-free, fail-closed.
 
     from budgetguard import BudgetGuard, BudgetPolicy, Pricing
 
@@ -14,12 +14,16 @@ from .errors import (
     KillSwitched,
     LoopDetected,
     UnknownTask,
+    VelocityAnomaly,
+    VelocityCallsExceeded,
+    VelocityDenied,
+    VelocitySpendExceeded,
 )
 from .guard import BudgetGuard, Decision, TaskLedger
 from .policy import BudgetPolicy
 from .pricing import DEFAULT_PRICES, ModelPrice, Pricing
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "BudgetGuard",
@@ -34,5 +38,9 @@ __all__ = [
     "LoopDetected",
     "KillSwitched",
     "UnknownTask",
+    "VelocityDenied",
+    "VelocitySpendExceeded",
+    "VelocityCallsExceeded",
+    "VelocityAnomaly",
     "__version__",
 ]

@@ -1,0 +1,169 @@
+{
+  "description": "Spend-velocity windows and anomaly detection (BudgetGuard 0.2.0). Both test suites (python/tests/test_velocity.py and typescript/test/velocity.test.ts) replay every case below against their own implementation and compare verdict, code, reason string, anomaly flag and the velocity detail object, so the two implementations are proven to agree. Keys are the Python (snake_case) names; the TypeScript loader maps them to camelCase. Every step carries an explicit now (seconds); nothing here depends on a wall clock.",
+  "cases": [
+    {
+      "name": "window spend cap denies exactly at the boundary, allows one below, and events age out at exactly window_seconds",
+      "policy": { "window_seconds": 60, "max_spend_per_window": { "value": 1000, "currency": "GBP" } },
+      "steps": [
+        { "op": "record", "now": 0, "amount": { "value": 600, "currency": "GBP" } },
+        { "op": "check", "now": 10, "amount": { "value": 400, "currency": "GBP" },
+          "expect": { "allowed": true, "code": null, "reason": null, "anomaly": false,
+                      "velocity": { "window_seconds": 60, "window_spend": 1000, "window_calls": 2, "baseline": null, "factor": null, "anomaly": false, "action": null } } },
+        { "op": "check", "now": 10, "amount": { "value": 401, "currency": "GBP" },
+          "expect": { "allowed": false, "code": "velocity_spend", "reason": "window spend cap exceeded (1001 > 1000 GBP in 60s)", "anomaly": false,
+                      "velocity": { "window_seconds": 60, "window_spend": 1001, "window_calls": 2, "baseline": null, "factor": null, "anomaly": false, "action": null } } },
+        { "op": "check", "now": 59, "amount": { "value": 401, "currency": "GBP" },
+          "expect": { "allowed": false, "code": "velocity_spend", "reason": "window spend cap exceeded (1001 > 1000 GBP in 60s)", "anomaly": false,
+                      "velocity": { "window_seconds": 60, "window_spend": 1001, "window_calls": 2, "baseline": null, "factor": null, "anomaly": false, "action": null } } },
+        { "op": "check", "now": 60, "amount": { "value": 1000, "currency": "GBP" },
+          "expect": { "allowed": true, "code": null, "reason": null, "anomaly": false,
+                      "velocity": { "window_seconds": 60, "window_spend": 1000, "window_calls": 1, "baseline": null, "factor": null, "anomaly": false, "action": null } } },
+        { "op": "record", "now": 60, "amount": { "value": 1000, "currency": "GBP" } },
+        { "op": "check", "now": 61, "amount": { "value": 1, "currency": "GBP" },
+          "expect": { "allowed": false, "code": "velocity_spend", "reason": "window spend cap exceeded (1001 > 1000 GBP in 60s)", "anomaly": false,
+                      "velocity": { "window_seconds": 60, "window_spend": 1001, "window_calls": 2, "baseline": null, "factor": null, "anomaly": false, "action": null } } },
+        { "op": "check", "now": 61,
+          "expect": { "allowed": true, "code": null, "reason": null, "anomaly": false,
+                      "velocity": { "window_seconds": 60, "window_spend": 1000, "window_calls": 2, "baseline": null, "factor": null, "anomaly": false, "action": null } } },
+        { "op": "check", "now": 120, "amount": { "value": 1000, "currency": "GBP" },
+          "expect": { "allowed": true, "code": null, "reason": null, "anomaly": false,
+                      "velocity": { "window_seconds": 60, "window_spend": 1000, "window_calls": 1, "baseline": null, "factor": null, "anomaly": false, "action": null } } }
+      ]
+    },
+    {
+      "name": "window call cap counts every recorded call and slides",
+      "policy": { "window_seconds": 10, "max_calls_per_window": 2 },
+      "steps": [
+        { "op": "record", "now": 0 },
+        { "op": "record", "now": 5 },
+        { "op": "check", "now": 9,
+          "expect": { "allowed": false, "code": "velocity_calls", "reason": "window call cap exceeded (3 > 2 in 10s)", "anomaly": false,
+                      "velocity": { "window_seconds": 10, "window_spend": 0, "window_calls": 3, "baseline": null, "factor": null, "anomaly": false, "action": null } } },
+        { "op": "check", "now": 10,
+          "expect": { "allowed": true, "code": null, "reason": null, "anomaly": false,
+                      "velocity": { "window_seconds": 10, "window_spend": 0, "window_calls": 2, "baseline": null, "factor": null, "anomaly": false, "action": null } } },
+        { "op": "check", "now": 10, "amount": { "value": 7, "currency": "GBP" },
+          "expect": { "allowed": true, "code": null, "reason": null, "anomaly": false,
+                      "velocity": { "window_seconds": 10, "window_spend": 7, "window_calls": 2, "baseline": null, "factor": null, "anomaly": false, "action": null } } },
+        { "op": "record", "now": 10, "amount": { "value": 7, "currency": "GBP" } },
+        { "op": "check", "now": 14,
+          "expect": { "allowed": false, "code": "velocity_calls", "reason": "window call cap exceeded (3 > 2 in 10s)", "anomaly": false,
+                      "velocity": { "window_seconds": 10, "window_spend": 7, "window_calls": 3, "baseline": null, "factor": null, "anomaly": false, "action": null } } },
+        { "op": "check", "now": 15,
+          "expect": { "allowed": true, "code": null, "reason": null, "anomaly": false,
+                      "velocity": { "window_seconds": 10, "window_spend": 7, "window_calls": 2, "baseline": null, "factor": null, "anomaly": false, "action": null } } }
+      ]
+    },
+    {
+      "name": "anomaly in deny mode: inactive until baseline_windows completed buckets exist, strict at the factor boundary, fractional baseline, zero baseline with history",
+      "policy": { "window_seconds": 60, "anomaly_factor": 2, "baseline_windows": 3 },
+      "steps": [
+        { "op": "record", "now": 0, "amount": { "value": 100, "currency": "GBP" } },
+        { "op": "check", "now": 100, "amount": { "value": 10000, "currency": "GBP" },
+          "expect": { "allowed": true, "code": null, "reason": null, "anomaly": false,
+                      "velocity": { "window_seconds": 60, "window_spend": 10000, "window_calls": 1, "baseline": null, "factor": 2, "anomaly": false, "action": null } } },
+        { "op": "record", "now": 60, "amount": { "value": 100, "currency": "GBP" } },
+        { "op": "record", "now": 120, "amount": { "value": 100, "currency": "GBP" } },
+        { "op": "check", "now": 179, "amount": { "value": 10000, "currency": "GBP" },
+          "expect": { "allowed": true, "code": null, "reason": null, "anomaly": false,
+                      "velocity": { "window_seconds": 60, "window_spend": 10100, "window_calls": 2, "baseline": null, "factor": 2, "anomaly": false, "action": null } } },
+        { "op": "check", "now": 180, "amount": { "value": 200, "currency": "GBP" },
+          "expect": { "allowed": true, "code": null, "reason": null, "anomaly": false,
+                      "velocity": { "window_seconds": 60, "window_spend": 200, "window_calls": 1, "baseline": 100, "factor": 2, "anomaly": false, "action": null } } },
+        { "op": "check", "now": 180, "amount": { "value": 201, "currency": "GBP" },
+          "expect": { "allowed": false, "code": "velocity_anomaly", "reason": "spend velocity anomaly (201 > 2 x baseline 100 over 60s)", "anomaly": true,
+                      "velocity": { "window_seconds": 60, "window_spend": 201, "window_calls": 1, "baseline": 100, "factor": 2, "anomaly": true, "action": "deny" } } },
+        { "op": "check", "now": 250, "amount": { "value": 133, "currency": "GBP" },
+          "expect": { "allowed": true, "code": null, "reason": null, "anomaly": false,
+                      "velocity": { "window_seconds": 60, "window_spend": 133, "window_calls": 1, "baseline": 66.66666666666667, "factor": 2, "anomaly": false, "action": null } } },
+        { "op": "check", "now": 250, "amount": { "value": 134, "currency": "GBP" },
+          "expect": { "allowed": false, "code": "velocity_anomaly", "reason": "spend velocity anomaly (134 > 2 x baseline 66.66666666666667 over 60s)", "anomaly": true,
+                      "velocity": { "window_seconds": 60, "window_spend": 134, "window_calls": 1, "baseline": 66.66666666666667, "factor": 2, "anomaly": true, "action": "deny" } } },
+        { "op": "check", "now": 1000, "amount": { "value": 1, "currency": "GBP" },
+          "expect": { "allowed": false, "code": "velocity_anomaly", "reason": "spend velocity anomaly (1 > 2 x baseline 0 over 60s)", "anomaly": true,
+                      "velocity": { "window_seconds": 60, "window_spend": 1, "window_calls": 1, "baseline": 0, "factor": 2, "anomaly": true, "action": "deny" } } },
+        { "op": "check", "now": 1000,
+          "expect": { "allowed": true, "code": null, "reason": null, "anomaly": false,
+                      "velocity": { "window_seconds": 60, "window_spend": 0, "window_calls": 1, "baseline": 0, "factor": 2, "anomaly": false, "action": null } } }
+      ]
+    },
+    {
+      "name": "anomaly in flag mode allows the call and marks the decision",
+      "policy": { "window_seconds": 60, "anomaly_factor": 1.5, "baseline_windows": 2, "anomaly_action": "flag" },
+      "steps": [
+        { "op": "record", "now": 0, "amount": { "value": 100, "currency": "GBP" } },
+        { "op": "record", "now": 60, "amount": { "value": 100, "currency": "GBP" } },
+        { "op": "check", "now": 120, "amount": { "value": 150, "currency": "GBP" },
+          "expect": { "allowed": true, "code": null, "reason": null, "anomaly": false,
+                      "velocity": { "window_seconds": 60, "window_spend": 150, "window_calls": 1, "baseline": 100, "factor": 1.5, "anomaly": false, "action": null } } },
+        { "op": "check", "now": 120, "amount": { "value": 151, "currency": "GBP" },
+          "expect": { "allowed": true, "code": null, "reason": null, "anomaly": true,
+                      "velocity": { "window_seconds": 60, "window_spend": 151, "window_calls": 1, "baseline": 100, "factor": 1.5, "anomaly": true, "action": "flag" } } },
+        { "op": "record", "now": 120, "amount": { "value": 151, "currency": "GBP" } },
+        { "op": "check", "now": 130, "amount": { "value": 1, "currency": "GBP" },
+          "expect": { "allowed": true, "code": null, "reason": null, "anomaly": true,
+                      "velocity": { "window_seconds": 60, "window_spend": 152, "window_calls": 2, "baseline": 100, "factor": 1.5, "anomaly": true, "action": "flag" } } }
+      ]
+    },
+    {
+      "name": "the kill switch wins, and the decision still carries the velocity detail",
+      "policy": { "window_seconds": 60, "max_calls_per_window": 1 },
+      "steps": [
+        { "op": "record", "now": 0 },
+        { "op": "kill" },
+        { "op": "check", "now": 1,
+          "expect": { "allowed": false, "code": "kill_switched", "reason": "kill switch engaged", "anomaly": false,
+                      "velocity": { "window_seconds": 60, "window_spend": 0, "window_calls": 2, "baseline": null, "factor": null, "anomaly": false, "action": null } } },
+        { "op": "revive" },
+        { "op": "check", "now": 1,
+          "expect": { "allowed": false, "code": "velocity_calls", "reason": "window call cap exceeded (2 > 1 in 60s)", "anomaly": false,
+                      "velocity": { "window_seconds": 60, "window_spend": 0, "window_calls": 2, "baseline": null, "factor": null, "anomaly": false, "action": null } } },
+        { "op": "check", "now": 60,
+          "expect": { "allowed": true, "code": null, "reason": null, "anomaly": false,
+                      "velocity": { "window_seconds": 60, "window_spend": 0, "window_calls": 1, "baseline": null, "factor": null, "anomaly": false, "action": null } } }
+      ]
+    },
+    {
+      "name": "the task spend cap is evaluated before the window cap",
+      "policy": { "max_spend": { "value": 500, "currency": "GBP" }, "window_seconds": 60, "max_spend_per_window": { "value": 1000, "currency": "GBP" } },
+      "steps": [
+        { "op": "check", "now": 0, "amount": { "value": 600, "currency": "GBP" },
+          "expect": { "allowed": false, "code": "budget_exceeded", "reason": "spend cap exceeded (600 > 500 GBP)", "anomaly": false,
+                      "velocity": { "window_seconds": 60, "window_spend": 600, "window_calls": 1, "baseline": null, "factor": null, "anomaly": false, "action": null } } },
+        { "op": "check", "now": 0, "amount": { "value": 500, "currency": "GBP" },
+          "expect": { "allowed": true, "code": null, "reason": null, "anomaly": false,
+                      "velocity": { "window_seconds": 60, "window_spend": 500, "window_calls": 1, "baseline": null, "factor": null, "anomaly": false, "action": null } } },
+        { "op": "record", "now": 0, "amount": { "value": 500, "currency": "GBP" } },
+        { "op": "check", "now": 1, "amount": { "value": 1, "currency": "GBP" },
+          "expect": { "allowed": false, "code": "budget_exceeded", "reason": "spend cap exceeded (501 > 500 GBP)", "anomaly": false,
+                      "velocity": { "window_seconds": 60, "window_spend": 501, "window_calls": 2, "baseline": null, "factor": null, "anomaly": false, "action": null } } }
+      ]
+    },
+    {
+      "name": "the task call cap is evaluated before the window call cap",
+      "policy": { "max_calls": 1, "window_seconds": 60, "max_calls_per_window": 5 },
+      "steps": [
+        { "op": "record", "now": 0 },
+        { "op": "check", "now": 1,
+          "expect": { "allowed": false, "code": "budget_exceeded", "reason": "call cap reached (1)", "anomaly": false,
+                      "velocity": { "window_seconds": 60, "window_spend": 0, "window_calls": 2, "baseline": null, "factor": null, "anomaly": false, "action": null } } }
+      ]
+    },
+    {
+      "name": "the window spend cap is evaluated before the anomaly check, and the detail still reports the anomaly",
+      "policy": { "window_seconds": 60, "max_spend_per_window": { "value": 300, "currency": "GBP" }, "anomaly_factor": 2, "baseline_windows": 1 },
+      "steps": [
+        { "op": "record", "now": 0, "amount": { "value": 100, "currency": "GBP" } },
+        { "op": "check", "now": 60, "amount": { "value": 301, "currency": "GBP" },
+          "expect": { "allowed": false, "code": "velocity_spend", "reason": "window spend cap exceeded (301 > 300 GBP in 60s)", "anomaly": true,
+                      "velocity": { "window_seconds": 60, "window_spend": 301, "window_calls": 1, "baseline": 100, "factor": 2, "anomaly": true, "action": "deny" } } },
+        { "op": "check", "now": 60, "amount": { "value": 250, "currency": "GBP" },
+          "expect": { "allowed": false, "code": "velocity_anomaly", "reason": "spend velocity anomaly (250 > 2 x baseline 100 over 60s)", "anomaly": true,
+                      "velocity": { "window_seconds": 60, "window_spend": 250, "window_calls": 1, "baseline": 100, "factor": 2, "anomaly": true, "action": "deny" } } },
+        { "op": "check", "now": 60, "amount": { "value": 200, "currency": "GBP" },
+          "expect": { "allowed": true, "code": null, "reason": null, "anomaly": false,
+                      "velocity": { "window_seconds": 60, "window_spend": 200, "window_calls": 1, "baseline": 100, "factor": 2, "anomaly": false, "action": null } } }
+      ]
+    }
+  ]
+}

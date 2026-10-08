@@ -73,9 +73,93 @@ def test_loop_always_denies_past_threshold(max_repeats, sig):
     g.close("p")
 
 
+# -- Spend velocity (0.2.0). Times are injected; the wall clock is never read. --
+
+velocity_calls = st.lists(
+    st.tuples(st.integers(0, 30), st.integers(0, 500)),  # (seconds since the last call, amount)
+    max_size=60,
+)
+
+
+def _gbp(v):
+    return {"value": v, "currency": "GBP"}
+
+
+@settings(max_examples=200)
+@given(st.integers(1, 2000), velocity_calls)
+def test_window_spend_cap_never_crossed(cap, seq):
+    """After every allowed+recorded call, the money recorded in the trailing
+    window, recomputed independently, is within the cap."""
+    w = 60
+    g = BudgetGuard()
+    g.open("p", BudgetPolicy(window_seconds=w, max_spend_per_window=_gbp(cap)))
+    recorded = []
+    now = 0
+    for dt, amount in seq:
+        now += dt
+        d = g.check("p", amount=_gbp(amount), now=now, enforce=False)
+        if not d.allowed:
+            assert d.code == "velocity_spend"
+            continue
+        g.record("p", amount=_gbp(amount), now=now)
+        recorded.append((now, amount))
+        assert sum(v for t, v in recorded if now - t < w) <= cap
+    g.close("p")
+
+
+@settings(max_examples=200)
+@given(st.integers(1, 10), st.lists(st.integers(0, 30), max_size=60))
+def test_window_call_cap_never_crossed(cap, dts):
+    w = 60
+    g = BudgetGuard()
+    g.open("p", BudgetPolicy(window_seconds=w, max_calls_per_window=cap))
+    recorded = []
+    now = 0
+    for dt in dts:
+        now += dt
+        d = g.check("p", now=now, enforce=False)
+        if not d.allowed:
+            assert d.code == "velocity_calls"
+            continue
+        g.record("p", now=now)
+        recorded.append(now)
+        assert sum(1 for t in recorded if now - t < w) <= cap
+    g.close("p")
+
+
+@settings(max_examples=200)
+@given(st.integers(1, 4), st.lists(st.tuples(st.integers(0, 50), st.integers(0, 1000)), max_size=40))
+def test_anomaly_needs_history_and_flag_mode_never_denies(n, seq):
+    """The baseline is None, and nothing is flagged, until the first recorded
+    event is baseline_windows * window_seconds old; after that the baseline is a
+    number. In flag mode with no other limit every call is allowed."""
+    w = 30
+    g = BudgetGuard()
+    g.open("p", BudgetPolicy(window_seconds=w, anomaly_factor=2, baseline_windows=n, anomaly_action="flag"))
+    now = 0
+    first = None
+    for dt, amount in seq:
+        now += dt
+        d = g.check("p", amount=_gbp(amount), now=now, enforce=False)
+        assert d.allowed
+        has_history = first is not None and now - first >= n * w
+        if has_history:
+            assert d.velocity["baseline"] is not None
+        else:
+            assert d.velocity["baseline"] is None and not d.anomaly
+        assert d.anomaly == d.velocity["anomaly"]
+        g.record("p", amount=_gbp(amount), now=now)
+        if first is None:
+            first = now
+    g.close("p")
+
+
 if __name__ == "__main__":
     test_token_cap_never_crossed()
     test_call_cap_never_crossed()
     test_usd_cap_never_crossed()
     test_loop_always_denies_past_threshold()
+    test_window_spend_cap_never_crossed()
+    test_window_call_cap_never_crossed()
+    test_anomaly_needs_history_and_flag_mode_never_denies()
     print("property tests ok")

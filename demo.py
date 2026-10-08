@@ -3,9 +3,10 @@
 
     python3 demo.py
 
-Shows the three controls on a simulated agent run: a USD budget that fails
-closed, a runaway loop that gets caught, and a kill switch that halts a task.
-No real model is called; token usage is simulated.
+Shows the four controls on a simulated agent run: a USD budget that fails
+closed, a runaway loop that gets caught, a kill switch that halts a task, and a
+spend-velocity window that catches a burst of payments. No real model is called;
+token usage and time are simulated.
 """
 
 import os
@@ -79,6 +80,30 @@ def main():
                 break
             guard.record("long-job")
             print(f"  call {call}: allowed")
+
+    banner("4. Spend velocity: a burst that breaks the task's own pattern")
+    print("  Policy: window_seconds = 60, anomaly_factor = 2 over 3 completed windows")
+
+    def gbp(value):
+        return {"value": value, "currency": "GBP"}
+
+    # Time is injected (now=), so the demo is deterministic: no wall clock involved.
+    with guard.task("payouts", BudgetPolicy(window_seconds=60, anomaly_factor=2, baseline_windows=3)):
+        clock = 0
+        for amount in (100, 100, 100):  # one payout a minute: the baseline
+            guard.check("payouts", amount=gbp(amount), now=clock)
+            guard.record("payouts", amount=gbp(amount), now=clock)
+            print(f"  t={clock:>3}s  paid {amount} GBP   allowed   (building the baseline)")
+            clock += 60
+        for amount in (150, 60):
+            d = guard.check("payouts", amount=gbp(amount), now=clock, enforce=False)
+            v = d.velocity
+            verdict = "allowed" if d.allowed else "DENIED "
+            print(f"  t={clock:>3}s  pay  {amount} GBP   {verdict}   window={v['window_spend']}  baseline={v['baseline']}")
+            if d.allowed:
+                guard.record("payouts", amount=gbp(amount), now=clock)
+            else:
+                print(f"          -> {d.reason}")
 
     banner("Mandate before the action. BudgetGuard during it. Witness after.")
     print("  github.com/major-matters  ·  majorlabs.co\n")

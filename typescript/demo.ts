@@ -1,5 +1,6 @@
 /** BudgetGuard demo. Run: npm run demo  (node demo.ts).
- *  Shows the three controls on a simulated agent run. No real model is called. */
+ *  Shows the four controls on a simulated agent run. No real model is called;
+ *  token usage and time are simulated. */
 
 import { BudgetGuard, Pricing, type ModelPrice, BudgetExceeded, LoopDetected, KillSwitched } from "./src/index.ts";
 
@@ -56,6 +57,28 @@ for (let call = 1; call <= 4; call++) {
   console.log(`  call ${call}: allowed`);
 }
 guard.close("long-job");
+
+banner("4. Spend velocity: a burst that breaks the task's own pattern");
+console.log("  Policy: windowSeconds = 60, anomalyFactor = 2 over 3 completed windows");
+const gbp = (value: number) => ({ value, currency: "GBP" });
+// Time is injected (now), so the demo is deterministic: no wall clock involved.
+guard.open("payouts", { windowSeconds: 60, anomalyFactor: 2, baselineWindows: 3 });
+let clock = 0;
+for (const amount of [100, 100, 100]) { // one payout a minute: the baseline
+  guard.check("payouts", { amount: gbp(amount), now: clock });
+  guard.record("payouts", { amount: gbp(amount), now: clock });
+  console.log(`  t=${String(clock).padStart(3)}s  paid ${amount} GBP   allowed   (building the baseline)`);
+  clock += 60;
+}
+for (const amount of [150, 60]) {
+  const d = guard.check("payouts", { amount: gbp(amount), now: clock, enforce: false });
+  const v = d.velocity!;
+  const verdict = d.allowed ? "allowed" : "DENIED ";
+  console.log(`  t=${String(clock).padStart(3)}s  pay  ${amount} GBP   ${verdict}   window=${v.windowSpend}  baseline=${v.baseline}`);
+  if (d.allowed) guard.record("payouts", { amount: gbp(amount), now: clock });
+  else console.log(`          -> ${d.reason}`);
+}
+guard.close("payouts");
 
 banner("Mandate before the action. BudgetGuard during it. Witness after.");
 console.log("  github.com/major-matters  ·  majorlabs.co\n");

@@ -29,6 +29,12 @@ jobs:
       - name: Unit tests
         working-directory: python
         run: PYTHONPATH=. python tests/test_budgetguard.py
+      - name: Money ledger tests
+        working-directory: python
+        run: PYTHONPATH=. python tests/test_spend.py
+      - name: Spend-velocity tests (shared cross-language fixture)
+        working-directory: python
+        run: PYTHONPATH=. python tests/test_velocity.py
       - name: Property tests (Hypothesis)
         working-directory: python
         run: PYTHONPATH=. python tests/test_properties.py

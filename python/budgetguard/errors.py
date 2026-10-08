@@ -39,3 +39,30 @@ class UnknownTask(BudgetGuardDenied):
     """No open task for the given id. Call open() / use the task() context first."""
 
     code = "unknown_task"
+
+
+class VelocityDenied(BudgetGuardDenied):
+    """Base class for the spend-velocity refusals (0.2.0). Catch this to handle any
+    velocity denial uniformly. Every instance carries the velocity detail in
+    `detail["velocity"]`."""
+
+    code = "velocity_denied"
+
+
+class VelocitySpendExceeded(VelocityDenied):
+    """Money moved in the current window, plus this call, would cross max_spend_per_window."""
+
+    code = "velocity_spend"
+
+
+class VelocityCallsExceeded(VelocityDenied):
+    """Calls made in the current window, plus this one, would cross max_calls_per_window."""
+
+    code = "velocity_calls"
+
+
+class VelocityAnomaly(VelocityDenied):
+    """Spend in the current window exceeds anomaly_factor times the trailing baseline,
+    and the policy's anomaly_action is "deny"."""
+
+    code = "velocity_anomaly"

@@ -12,11 +12,12 @@ It is one of three small primitives from [Major Labs](https://majorlabs.co):
 
 ## What it does
 
-Three controls, all enforced before the call runs:
+Four controls, all enforced before the call runs:
 
 - **Budgets** — cap a task by USD, total tokens, input/output tokens, or call count. The next call is refused if it would cross the cap.
 - **Loop detection** — catch runaway agents that repeat the same call. If one signature repeats past a threshold within a sliding window, the call is denied.
 - **Kill switch** — halt a single task, or everything, immediately.
+- **Spend velocity** (0.2.0): cap how much money, or how many calls, fit in a sliding window, and deny or flag a window that breaks the task's own recent pattern.
 
 BudgetGuard never makes the model call itself. You ask it whether the next call is allowed (`check`), make the call, then tell it what actually happened (`record`).
 
@@ -64,7 +65,7 @@ Prefer not to use exceptions? `guard.check(..., enforce=False)` returns a `Decis
 ## Quickstart (TypeScript)
 
 ```ts
-import { BudgetGuard, Pricing } from "budget-guard";
+import { BudgetGuard, Pricing } from "budget-guard-agents";
 
 const guard = new BudgetGuard(new Pricing());
 guard.open("research-job", { maxUsd: 0.5, maxCalls: 20, maxRepeats: 3 });
@@ -76,6 +77,35 @@ guard.close("research-job");
 ```
 
 Run the demo: `python3 demo.py` (Python) or `npm run demo` (TypeScript).
+
+---
+
+## Spend-velocity windows and anomaly detection (0.2.0)
+
+A total cap says how much a task may spend; a velocity window says how fast.
+`windowSeconds` opens a sliding window over the task's recorded calls,
+`maxSpendPerWindow` and `maxCallsPerWindow` cap what fits in it (codes
+`velocity_spend`, `velocity_calls`), and `anomalyFactor` refuses or flags a
+window whose spend exceeds that multiple of the mean of the trailing
+`baselineWindows` completed windows (code `velocity_anomaly`; inactive until
+that much history exists, so a cold start never fires). Time is injected: pass
+`now` (seconds) to `check` and `record`, or give the guard a `clock`.
+
+```ts
+import { BudgetGuard } from "budget-guard-agents";
+
+const guard = new BudgetGuard(undefined, { clock: () => Date.now() / 1000 });   // or pass now per call
+guard.open("payouts", { windowSeconds: 60, maxSpendPerWindow: { value: 50000, currency: "GBP" },
+                        anomalyFactor: 3, baselineWindows: 3, anomalyAction: "flag" });
+const d = guard.check("payouts", { amount: { value: 2500, currency: "GBP" }, now: 1_700_000_000, enforce: false });
+guard.record("payouts", { amount: { value: 2500, currency: "GBP" }, now: 1_700_000_000 });
+console.log(d.allowed, d.anomaly, d.velocity);   // plain object: windowSpend, windowCalls, baseline, factor, anomaly, action
+```
+
+The kill switch and the existing caps are evaluated first; the first failing
+check wins and every decision still carries the `velocity` detail. Velocity
+state is in memory and per guard instance. The full semantics are in the
+repository README; both language suites replay the same fixture file.
 
 ---
 
