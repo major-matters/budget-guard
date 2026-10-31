@@ -1,5 +1,7 @@
-# CI for BudgetGuard. Lives under budget-guard/ so it sits at the repo root once
-# the package is extracted into its own public repository.
+# CI for BudgetGuard. Every action is pinned to a commit SHA (the tag it was taken from
+# is in the comment) and the workflow holds read-only permissions; Dependabot keeps
+# the pins current. Every file under python/tests runs through pytest, so a new test
+# file cannot be left out of CI by accident.
 name: CI
 
 on:
@@ -7,7 +9,9 @@ on:
     branches: [main]
   pull_request:
 
-# Run the checkout/setup actions on Node 24 (Node 20 deprecated on runners 2026-06-16).
+permissions:
+  contents: read
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
@@ -19,25 +23,16 @@ jobs:
       matrix:
         python-version: ["3.9", "3.11", "3.12"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install test/lint tools (the package itself has zero runtime deps)
         working-directory: python
-        run: pip install hypothesis bandit
-      - name: Unit tests
+        run: pip install hypothesis bandit pytest
+      - name: Tests (every file under tests/, unit + property)
         working-directory: python
-        run: PYTHONPATH=. python tests/test_budgetguard.py
-      - name: Money ledger tests
-        working-directory: python
-        run: PYTHONPATH=. python tests/test_spend.py
-      - name: Spend-velocity tests (shared cross-language fixture)
-        working-directory: python
-        run: PYTHONPATH=. python tests/test_velocity.py
-      - name: Property tests (Hypothesis)
-        working-directory: python
-        run: PYTHONPATH=. python tests/test_properties.py
+        run: PYTHONPATH=. python -m pytest -q tests
       - name: Bandit (security lint)
         working-directory: python
         run: bandit -r budgetguard -ll
@@ -46,13 +41,13 @@ jobs:
     name: TypeScript (Node 22)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22"
-      - name: Install
+      - name: Install (exactly the lockfile)
         working-directory: typescript
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
       - name: Build (type-check + emit dist + types)
         working-directory: typescript
         run: npm run build
@@ -64,8 +59,8 @@ jobs:
     name: Semgrep (SAST)
     runs-on: ubuntu-latest
     container:
-      image: semgrep/semgrep
+      image: semgrep/semgrep:1.183.0
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Semgrep scan
         run: semgrep scan --config p/python --config p/typescript --config p/secrets --error

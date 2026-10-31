@@ -30,9 +30,18 @@ It does **not** defend against a malicious *caller* who lies about token counts 
 - Python: `python3 tests/test_budgetguard.py`, `python3 tests/test_properties.py` (hypothesis), `bandit -r budgetguard`.
 - TypeScript: `npm test` (node --test, includes fast-check property tests).
 
-## Reporting
+## Reporting a vulnerability
 
-This is a v0 research artifact. Open an issue at [github.com/major-matters](https://github.com/major-matters) for anything that looks like a fail-open.
+Please report vulnerabilities privately via GitHub's private vulnerability
+reporting on this repository (Security tab -> Report a vulnerability). It is
+enabled and monitored.
+
+We follow the same standard we ask of others: acknowledgment within 7 days, a
+fix or a plan within 45, and credit to reporters who want it. Our coordinated
+disclosure process for the wider MCP ecosystem is described at
+https://majorlabs.co/security.
+
+Please do not open public issues for security reports.
 
 ## Audit status (v0)
 
@@ -40,7 +49,7 @@ This is a v0 release. It has been independently hardened — CodeQL, bandit, sem
 
 ## Security review welcome
 
-We actively want researcher eyes on this. If you find a fail-open, a signature bypass, an SSRF path, or any way to defeat a guarantee in this document, please open an issue. Credit given. The fail-closed enforcement (budget, loop, and kill-switch checks) is the highest-value target.
+We actively want researcher eyes on this. If you find a fail-open, a signature bypass, an SSRF path, or any way to defeat a guarantee in this document, please report it privately (see above). Credit given. The fail-closed enforcement (budget, loop, and kill-switch checks) is the highest-value target.
 
 ## v0.0.2 hardening (2026-06-10 internal audit)
 

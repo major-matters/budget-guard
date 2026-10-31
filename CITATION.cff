@@ -2,6 +2,9 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 title: "BudgetGuard"
 type: software
+# npm and PyPI package name: budget-guard-agents
+version: "0.2.0"
+date-released: "2026-10-08"
 authors:
   - name: "Major Labs"
     website: "https://majorlabs.co"
